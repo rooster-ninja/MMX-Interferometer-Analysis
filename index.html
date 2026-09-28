@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Michelson–Morley Dielectric-Mode Simulator (Cahill–Kitto)</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #141822;
+    --panel2: #1b202c;
+    --border: #2a3142;
+    --text: #d8dee9;
+    --muted: #8891a7;
+    --accent: #4fd1c5;
+    --accent2: #f2994a;
+    --warn: #e06c75;
+    --grid: #232a3a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px;
+  }
+  header {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; color: #fff; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  .layout {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 14px;
+    padding: 14px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .panel h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 0 0 8px 0;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+  .controls-col { display: flex; flex-direction: column; gap: 10px; }
+  .field { margin-bottom: 8px; }
+  .field label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+  .field label span.val { color: var(--accent); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, input[type=number], input[type=date] {
+    width: 100%;
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 12px;
+  }
+  .toggle-row input { accent-color: var(--accent2); width: 16px; height: 16px; }
+  .grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  @media (max-width: 1200px) {
+    .grid2 { grid-template-columns: 1fr; }
+  }
+  canvas { display: block; width: 100%; background: #0d1119; border-radius: 6px; }
+  #cInterf, #cCompass { aspect-ratio: 1 / 1; }
+  #cTrace, #cDay { aspect-ratio: 560 / 440; }
+  .readout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px 14px;
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .readout div.k { color: var(--muted); }
+  .readout div.v { color: var(--text); text-align: right; }
+  .pill {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    font-size: 10.5px;
+    color: var(--muted);
+  }
+  .pill.on { color: #0b0e14; background: var(--accent); border-color: var(--accent); }
+  #sanity { font-size: 11.5px; white-space: pre-wrap; line-height: 1.5; }
+  .pass { color: #7ec699; }
+  .fail { color: var(--warn); }
+  button {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  .note { color: var(--muted); font-size: 10.5px; line-height: 1.4; margin-top: 6px; }
+  hr.sep { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Michelson–Morley: Dielectric-Mode Simulator</h1>
+  <span class="sub">Cahill &amp; Kitto (2002, physics/0205070) preferred-frame / gas-drag model &mdash; interactive demo, not a metrology tool</span>
+</header>
+
+<div class="layout">
+
+  <!-- ============ CONTROLS ============ -->
+  <div class="controls-col">
+
+    <div class="panel">
+      <h2>Presets</h2>
+      <div class="field">
+        <label>Apex preset</label>
+        <select id="presetApex">
+          <option value="cmb">CMB dipole (370 km/s)</option>
+          <option value="miller1933">Miller 1933 ether-drift apex (208 km/s)</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Gas preset</label>
+        <select id="presetGas">
+          <option value="vacuum">Vacuum (n=1.0)</option>
+          <option value="air" selected>Air (n=1.00029)</option>
+          <option value="helium">Helium (n=1.000036)</option>
+          <option value="custom">Custom n</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Apparatus preset</label>
+        <select id="presetApparatus">
+          <option value="mm1887">Michelson–Morley 1887</option>
+          <option value="miller1925" selected>Miller, Mt Wilson 1925</option>
+          <option value="illingworth1927">Illingworth 1927 (He)</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="note">Illingworth's figures are an approximate reconstruction from published descriptions (multi-pass helium interferometer) &mdash; treat as illustrative, not archival.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Source / ether wind</h2>
+      <div class="field">
+        <label>Speed through foam, v <span class="val" id="vVal"></span></label>
+        <input type="range" id="v" min="0" max="400" step="1">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Apex RA (h) <span class="val" id="raVal"></span></label>
+          <input type="range" id="ra" min="0" max="24" step="0.05">
+        </div>
+        <div class="field">
+          <label>Apex Dec (°) <span class="val" id="decVal"></span></label>
+          <input type="range" id="dec" min="-90" max="90" step="0.5">
+        </div>
+      </div>
+      <div class="toggle-row">
+        <label for="orbital">Add Earth orbital velocity (29.8 km/s, vector sum)</label>
+        <input type="checkbox" id="orbital">
+      </div>
+      <div class="field">
+        <label>Day of year (orbital direction) <span class="val" id="doyVal"></span></label>
+        <input type="range" id="doy" min="1" max="365" step="1">
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Gas / medium</h2>
+      <div class="field">
+        <label>Refractive index n <span class="val" id="nVal"></span></label>
+        <input type="range" id="n" min="1.0" max="1.0006" step="0.000005">
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Apparatus</h2>
+      <div class="row2">
+        <div class="field">
+          <label>Latitude φ (°) <span class="val" id="latVal"></span></label>
+          <input type="range" id="lat" min="-90" max="90" step="0.5">
+        </div>
+        <div class="field">
+          <label>Tilt (stretch) <span class="val" id="tiltVal"></span></label>
+          <input type="range" id="tilt" min="0" max="90" step="1">
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Arm length L (m) <span class="val" id="LVal"></span></label>
+          <input type="range" id="L" min="1" max="40" step="0.5">
+        </div>
+        <div class="field">
+          <label>Wavelength λ (nm) <span class="val" id="lambdaVal"></span></label>
+          <input type="range" id="lambda" min="400" max="700" step="1">
+        </div>
+      </div>
+      <div class="note">Tilt exposes Cahill's 11.2&nbsp;km/s vertical inflow term to the horizontal arm plane (simplified projection).</div>
+    </div>
+
+    <div class="panel">
+      <h2>Time &amp; animation</h2>
+      <div class="row2">
+        <div class="field">
+          <label>Rotation speed (°/s) <span class="val" id="rotVal"></span></label>
+          <input type="range" id="rot" min="0" max="180" step="1">
+        </div>
+        <div class="field">
+          <label>Time speed (× real) <span class="val" id="timeVal"></span></label>
+          <input type="range" id="time" min="0" max="4000" step="10">
+        </div>
+      </div>
+      <div class="field">
+        <label>Contraction exaggeration (display only) <span class="val" id="exagVal"></span></label>
+        <input type="range" id="exag" min="1" max="2000000" step="1000">
+      </div>
+      <button id="resetClock">Reset clock to LST 0 / solar 0</button>
+    </div>
+
+    <div class="panel">
+      <h2>Physics toggles</h2>
+      <div class="toggle-row">
+        <label for="contraction">Lorentz arm contraction</label>
+        <input type="checkbox" id="contraction" checked>
+      </div>
+      <div class="toggle-row">
+        <label for="standardPhysics">Force standard-physics null (SR/Fresnel drag)</label>
+        <input type="checkbox" id="standardPhysics">
+      </div>
+      <div class="toggle-row">
+        <label for="exactFormula">Use exact formula (off = small-v approx)</label>
+        <input type="checkbox" id="exactFormula" checked>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ MAIN PANELS ============ -->
+  <div>
+
+    <div class="grid2">
+
+      <div class="panel">
+        <h2>1&middot; Top-down interferometer</h2>
+        <canvas id="cInterf" width="440" height="440"></canvas>
+      </div>
+
+      <div class="panel">
+        <h2>2&middot; ΔN vs rotation angle (live, one revolution)</h2>
+        <canvas id="cTrace" width="560" height="440"></canvas>
+      </div>
+
+      <div class="panel">
+        <h2>3&middot; Signal-axis compass</h2>
+        <canvas id="cCompass" width="440" height="440"></canvas>
+      </div>
+
+      <div class="panel">
+        <h2>4&middot; 24 h sidereal / solar plot</h2>
+        <canvas id="cDay" width="560" height="440"></canvas>
+      </div>
+
+    </div>
+
+    <div class="grid2" style="margin-top:14px;">
+      <div class="panel">
+        <h2>Readout</h2>
+        <div class="readout" id="readout"></div>
+      </div>
+      <div class="panel">
+        <h2>Sanity checks <button id="runSanity" style="float:right;">Run</button></h2>
+        <div id="sanity"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   Constants
+   ============================================================ */
+const C = 299792458;              // m/s
+const KM = 1000;
+const DEG = Math.PI / 180;
+const SIDEREAL_RATE = 366.25 / 365.25; // sidereal hours advance faster than solar
+const EARTH_ORBITAL_V = 29.8 * KM;     // m/s
+const OBLIQUITY = 23.439 * DEG;
+const VERTICAL_INFLOW = 11.2 * KM;     // m/s, Cahill's stretch term
+
+function deg2rad(d) { return d * DEG; }
+function rad2deg(r) { return r / DEG; }
+function wrap360(d) { return ((d % 360) + 360) % 360; }
+function wrap180signed(d) { let x = wrap360(d + 180) - 180; return x; }
+function wrapHours(h, period) { period = period || 24; return ((h % period) + period) % period; }
+
+/* ============================================================
+   Presets
+   ============================================================ */
+const APEX_PRESETS = {
+  cmb:        { ra: 11 + 12/60, dec: -7,          v: 370 },
+  miller1933: { ra: 4 + 54/60,  dec: -(70+33/60),  v: 208 },
+};
+const GAS_PRESETS = {
+  vacuum: 1.0,
+  air:    1.00029,
+  helium: 1.000036,
+};
+const APPARATUS_PRESETS = {
+  mm1887:         { L: 11,  lambda: 590, lat: 41.5 },
+  miller1925:     { L: 32,  lambda: 570, lat: 34.2 },
+  illingworth1927:{ L: 16,  lambda: 546.1, lat: 34.15, gas: 'helium' }, // approx reconstruction, multi-pass helium interferometer
+  custom:         { L: 11,  lambda: 590, lat: 49.0 },
+};
+
+/* ============================================================
+   State
+   ============================================================ */
+const state = {
+  v: 370,            // km/s
+  ra: 11 + 12/60,     // hours
+  dec: -7,            // deg
+  n: GAS_PRESETS.air,
+  lat: 34.2,
+  tilt: 0,            // deg
+  L: 32,              // m
+  lambda: 570,        // nm
+  rotSpeed: 30,        // deg/s (mechanical rotation of apparatus, real seconds)
+  timeSpeed: 500,      // simulated seconds per real second (drives LST/solar clock)
+  exag: 400000,        // display-only contraction exaggeration factor
+  orbital: false,
+  doy: 172,            // day of year (orbital direction only)
+  contraction: true,
+  standardPhysics: false,
+  exactFormula: true,
+};
+
+// simulation clock, in solar hours [0,24) and derived sidereal hours
+let simSolarHours = 0;
+let armAzimuth = 0; // deg, mechanical orientation of arm 1 in the lab (compass frame)
+let traceBuffer = []; // {az, dn} samples for panel 2, reset each revolution
+let lastArmAzWrapped = 0;
+
+/* ============================================================
+   Astronomy helpers
+   ============================================================ */
+// Returns {alt, az} in degrees. az measured from North, increasing through East.
+function altAz(raH, decDeg, latDeg, lstH) {
+  const H = deg2rad((lstH - raH) * 15);
+  const dec = deg2rad(decDeg);
+  const lat = deg2rad(latDeg);
+  const sinAlt = Math.sin(dec) * Math.sin(lat) + Math.cos(dec) * Math.cos(lat) * Math.cos(H);
+  const alt = Math.asin(Math.max(-1, Math.min(1, sinAlt)));
+  const y = Math.sin(H);
+  const x = Math.cos(H) * Math.sin(lat) - Math.tan(dec) * Math.cos(lat);
+  const Asouth = Math.atan2(y, x); // measured from South, westward positive
+  const azNorth = wrap360(rad2deg(Asouth) + 180);
+  return { alt: rad2deg(alt), az: azNorth };
+}
+
+// Low-precision mean solar ecliptic longitude from day-of-year (deg).
+function sunEclipticLongitude(doy) {
+  return wrap360(280.46 + 0.9856474 * doy);
+}
+
+// Convert ecliptic (lambdaDeg, beta=0) to equatorial {ra (h), dec (deg)}.
+function eclipticToEquatorial(lambdaDeg) {
+  const lam = deg2rad(lambdaDeg);
+  const eps = OBLIQUITY;
+  const sinDec = Math.sin(eps) * Math.sin(lam);
+  const dec = Math.asin(Math.max(-1, Math.min(1, sinDec)));
+  const ra = Math.atan2(Math.sin(lam) * Math.cos(eps), Math.cos(lam));
+  return { ra: wrapHours(rad2deg(ra) / 15, 24), dec: rad2deg(dec) };
+}
+
+// Convert {raH, decDeg, vMS} to equatorial Cartesian velocity vector.
+function apexToCartesian(raH, decDeg, vMS) {
+  const ra = deg2rad(raH * 15);
+  const dec = deg2rad(decDeg);
+  return [
+    vMS * Math.cos(dec) * Math.cos(ra),
+    vMS * Math.cos(dec) * Math.sin(ra),
+    vMS * Math.sin(dec),
+  ];
+}
+function cartesianToApex([x, y, z]) {
+  const v = Math.sqrt(x*x + y*y + z*z);
+  if (v < 1e-6) return { ra: 0, dec: 0, v: 0 };
+  const dec = Math.asin(z / v);
+  const ra = wrapHours(rad2deg(Math.atan2(y, x)) / 15, 24);
+  return { ra, dec: rad2deg(dec), v };
+}
+
+// Effective apex (RA/Dec/v in m/s) including optional orbital vector sum.
+function effectiveApex() {
+  let base = { raH: state.ra, decDeg: state.dec, vMS: state.v * KM };
+  if (!state.orbital) return base;
+  const lamSun = sunEclipticLongitude(state.doy);
+  const velDir = wrap360(lamSun - 90);
+  const orb = eclipticToEquatorial(velDir);
+  const c1 = apexToCartesian(base.raH, base.decDeg, base.vMS);
+  const c2 = apexToCartesian(orb.ra, orb.dec, EARTH_ORBITAL_V);
+  const sum = [c1[0]+c2[0], c1[1]+c2[1], c1[2]+c2[2]];
+  const { ra, dec, v } = cartesianToApex(sum);
+  return { raH: ra, decDeg: dec, vMS: v };
+}
+
+/* ============================================================
+   Core interferometer physics
+   ============================================================ */
+// Exact round-trip time for an arm at angle alpha (rad) to the effective
+// horizontal wind v (m/s), rest length L (m), light speed in medium V (m/s).
+function armRoundTripTime(L, V, v, alphaRad, contractionOn) {
+  const beta2 = (v * v) / (C * C);
+  const ell = contractionOn ? L * Math.sqrt(Math.max(0, 1 - beta2 * Math.cos(alphaRad) ** 2)) : L;
+  const denom = V * V - v * v;
+  return 2 * ell * Math.sqrt(Math.max(0, V * V - v * v * Math.sin(alphaRad) ** 2)) / denom;
+}
+
+// ΔN(theta) where theta = angle (deg) between arm 1 and the effective
+// horizontal velocity direction. Arm 2 is perpendicular to arm 1.
+function deltaNExact(thetaDeg, L, lambdaM, n, vEffMS, contractionOn) {
+  const V = C / n;
+  const a1 = deg2rad(thetaDeg);
+  const a2 = a1 + Math.PI / 2;
+  const t1 = armRoundTripTime(L, V, vEffMS, a1, contractionOn);
+  const t2 = armRoundTripTime(L, V, vEffMS, a2, contractionOn);
+  return C * (t1 - t2) / lambdaM;
+}
+
+function amplitudeApprox(L, lambdaM, n, vEffMS) {
+  return L * (n * n - 1) * vEffMS * vEffMS / (C * C * lambdaM);
+}
+
+function deltaNApprox(thetaDeg, L, lambdaM, n, vEffMS) {
+  return amplitudeApprox(L, lambdaM, n, vEffMS) * Math.cos(2 * deg2rad(thetaDeg));
+}
+
+// Combine horizontal v_h with the (approximate) tilt-exposed vertical inflow.
+// This is a simplified scalar/geometric projection, not a full 3-D treatment.
+function effectiveWind(vhMS, azDeg, vVertTotalMS, tiltDeg) {
+  if (tiltDeg <= 0.001) return { v: vhMS, axisDeg: wrap360(azDeg) };
+  const leak = Math.sin(deg2rad(tiltDeg)) * vVertTotalMS;
+  // Combine as two orthogonal-ish contributions in the tilted plane: the
+  // horizontal wind along its own azimuth, and the leaked vertical
+  // component along the tilt axis (taken as azDeg + 90 for a generic mix).
+  const vx = vhMS * Math.cos(deg2rad(azDeg)) + leak * Math.cos(deg2rad(azDeg + 90));
+  const vy = vhMS * Math.sin(deg2rad(azDeg)) + leak * Math.sin(deg2rad(azDeg + 90));
+  const v = Math.sqrt(vx * vx + vy * vy);
+  const axisDeg = wrap360(rad2deg(Math.atan2(vy, vx)));
+  return { v, axisDeg };
+}
+
+// Given theta (deg, arm1 relative to axis) return ΔN using current toggles.
+function computeDeltaN(thetaDeg, vEffMS) {
+  if (state.standardPhysics) return 0;
+  const L = state.L;
+  const lambdaM = state.lambda * 1e-9;
+  const n = state.n;
+  return state.exactFormula
+    ? deltaNExact(thetaDeg, L, lambdaM, n, vEffMS, state.contraction)
+    : deltaNApprox(thetaDeg, L, lambdaM, n, vEffMS);
+}
+
+function amplitudeAt(vEffMS) {
+  if (state.standardPhysics) return 0;
+  const L = state.L;
+  const lambdaM = state.lambda * 1e-9;
+  const n = state.n;
+  if (state.exactFormula) {
+    // amplitude = max(ΔN) over theta = ΔN(0) for this even, period-180 curve
+    return deltaNExact(0, L, lambdaM, n, vEffMS, state.contraction);
+  }
+  return amplitudeApprox(L, lambdaM, n, vEffMS);
+}
+
+// Full pipeline for a given LST (hours): returns {alt, az, vh, vEff, axisDeg, A}
+function solveForLST(lstH) {
+  const apex = effectiveApex();
+  const { alt, az } = altAz(apex.raH, apex.decDeg, state.lat, lstH);
+  const altR = deg2rad(alt);
+  const vh = apex.vMS * Math.cos(altR);
+  const vVert = apex.vMS * Math.sin(altR) + VERTICAL_INFLOW; // inflow always downward-ish contribution
+  const { v: vEff, axisDeg } = effectiveWind(vh, az, vVert, state.tilt);
+  const A = amplitudeAt(vEff);
+  return { alt, az, vh, vEff, axisDeg: wrap360(axisDeg % 180), A };
+}
+
+/* ============================================================
+   DOM wiring
+   ============================================================ */
+const els = {};
+["v","ra","dec","n","lat","tilt","L","lambda","rot","time","exag","doy",
+ "orbital","contraction","standardPhysics","exactFormula",
+ "presetApex","presetGas","presetApparatus","resetClock","runSanity"].forEach(id => {
+  els[id] = document.getElementById(id);
+});
+
+function fmt(x, d) { return Number(x).toFixed(d === undefined ? 2 : d); }
+
+function syncSlidersFromState() {
+  els.v.value = state.v;           els.vVal.textContent = fmt(state.v,0) + ' km/s';
+  els.ra.value = state.ra;         els.raVal.textContent = fmt(state.ra,2) + ' h';
+  els.dec.value = state.dec;       els.decVal.textContent = fmt(state.dec,1) + '°';
+  els.n.value = state.n;           els.nVal.textContent = state.n.toFixed(6);
+  els.lat.value = state.lat;       els.latVal.textContent = fmt(state.lat,1) + '°';
+  els.tilt.value = state.tilt;     els.tiltVal.textContent = fmt(state.tilt,0) + '°';
+  els.L.value = state.L;           els.LVal.textContent = fmt(state.L,1) + ' m';
+  els.lambda.value = state.lambda; els.lambdaVal.textContent = fmt(state.lambda,0) + ' nm';
+  els.rot.value = state.rotSpeed;  els.rotVal.textContent = fmt(state.rotSpeed,0) + '°/s';
+  els.time.value = state.timeSpeed;els.timeVal.textContent = fmt(state.timeSpeed,0) + '×';
+  els.exag.value = state.exag;     els.exagVal.textContent = fmt(state.exag,0) + '×';
+  els.doy.value = state.doy;       els.doyVal.textContent = 'day ' + state.doy;
+  els.orbital.checked = state.orbital;
+  els.contraction.checked = state.contraction;
+  els.standardPhysics.checked = state.standardPhysics;
+  els.exactFormula.checked = state.exactFormula;
+}
+// grab the val spans (declared after els loop since ids differ from field names)
+["vVal","raVal","decVal","nVal","latVal","tiltVal","LVal","lambdaVal","rotVal","timeVal","exagVal","doyVal"]
+  .forEach(id => { els[id] = document.getElementById(id); });
+
+function bindRange(id, key, isFloat) {
+  els[id].addEventListener('input', () => {
+    state[key] = isFloat ? parseFloat(els[id].value) : parseFloat(els[id].value);
+    syncSlidersFromState();
+  });
+}
+bindRange('v','v');
+bindRange('ra','ra');
+bindRange('dec','dec');
+bindRange('n','n');
+bindRange('lat','lat');
+bindRange('tilt','tilt');
+bindRange('L','L');
+bindRange('lambda','lambda');
+bindRange('rot','rotSpeed');
+bindRange('time','timeSpeed');
+bindRange('exag','exag');
+bindRange('doy','doy');
+
+els.orbital.addEventListener('change', () => state.orbital = els.orbital.checked);
+els.contraction.addEventListener('change', () => state.contraction = els.contraction.checked);
+els.standardPhysics.addEventListener('change', () => state.standardPhysics = els.standardPhysics.checked);
+els.exactFormula.addEventListener('change', () => state.exactFormula = els.exactFormula.checked);
+
+els.presetApex.addEventListener('change', () => {
+  const key = els.presetApex.value;
+  if (key !== 'custom' && APEX_PRESETS[key]) {
+    const p = APEX_PRESETS[key];
+    state.ra = p.ra; state.dec = p.dec; state.v = p.v;
+    syncSlidersFromState();
+  }
+});
+els.presetGas.addEventListener('change', () => {
+  const key = els.presetGas.value;
+  if (key !== 'custom' && GAS_PRESETS[key] !== undefined) {
+    state.n = GAS_PRESETS[key];
+    syncSlidersFromState();
+  }
+});
+els.presetApparatus.addEventListener('change', () => {
+  const key = els.presetApparatus.value;
+  const p = APPARATUS_PRESETS[key];
+  if (p) {
+    state.L = p.L; state.lambda = p.lambda; state.lat = p.lat;
+    if (p.gas && GAS_PRESETS[p.gas] !== undefined) {
+      state.n = GAS_PRESETS[p.gas];
+      els.presetGas.value = p.gas;
+    }
+    syncSlidersFromState();
+  }
+});
+els.resetClock.addEventListener('click', () => {
+  simSolarHours = 0;
+  armAzimuth = 0;
+  traceBuffer = [];
+});
+els.runSanity.addEventListener('click', runSanityChecks);
+
+syncSlidersFromState();
+
+/* ============================================================
+   Canvas rendering
+   ============================================================ */
+const cInterf = document.getElementById('cInterf').getContext('2d');
+const cTrace  = document.getElementById('cTrace').getContext('2d');
+const cCompass= document.getElementById('cCompass').getContext('2d');
+const cDay    = document.getElementById('cDay').getContext('2d');
+
+function clear(ctx, w, h) {
+  ctx.clearRect(0, 0, w, h);
+}
+
+function drawInterferometer(armAzDeg, axisAzDeg, vEffMS, tNow) {
+  const ctx = cInterf, W = 440, H = 440, cx = W/2, cy = H/2;
+  clear(ctx, W, H);
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // compass ring
+  ctx.strokeStyle = '#232a3a';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(0, 0, 170, 0, 2*Math.PI); ctx.stroke();
+  ctx.fillStyle = '#8891a7'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('N', 0, -178);
+  ctx.fillText('S', 0, 190);
+  ctx.fillText('E', 182, 4);
+  ctx.fillText('W', -182, 4);
+
+  const scale = 6.5; // px per meter (base)
+  const baseLenPx = Math.min(150, state.L * scale);
+
+  // exaggerated contraction factor for the arm aligned closest to the wind
+  const beta2 = (vEffMS*vEffMS)/(C*C);
+  const exagBeta2 = Math.min(0.9, beta2 * state.exag);
+
+  function armEndpoint(armDeg, exaggerated) {
+    const rad = deg2rad(armDeg);
+    // angle between this arm and axisAzDeg (mod180 axis) for contraction calc
+    const rel = deg2rad(armDeg - axisAzDeg);
+    let len = baseLenPx;
+    if (state.contraction && exaggerated) {
+      const factor = Math.sqrt(Math.max(0, 1 - exagBeta2 * Math.cos(rel) ** 2));
+      len = baseLenPx * factor;
+    } else if (state.contraction) {
+      const factor = Math.sqrt(Math.max(0, 1 - beta2 * Math.cos(rel) ** 2));
+      len = baseLenPx * factor;
+    }
+    // compass angle -> canvas coords (0=N up, clockwise)
+    const x = Math.sin(rad) * len;
+    const y = -Math.cos(rad) * len;
+    return { x, y, len };
+  }
+
+  const arm1Deg = armAzDeg;
+  const arm2Deg = armAzDeg + 90;
+  const e1 = armEndpoint(arm1Deg, true);
+  const e2 = armEndpoint(arm2Deg, true);
+
+  // beamsplitter + arms
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#4fd1c5';
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(e1.x, e1.y); ctx.stroke();
+  ctx.strokeStyle = '#f2994a';
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(e2.x, e2.y); ctx.stroke();
+
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(0,0,5,0,2*Math.PI); ctx.fill();
+
+  // animated light pulses (slowed & exaggerated, purely cosmetic)
+  function pulse(endpt, phaseOffset, color) {
+    const period = 2.2; // seconds for a full out-and-back, exaggerated slow
+    const tt = ((tNow/1000) + phaseOffset) % period;
+    const frac = tt < period/2 ? (tt/(period/2)) : (1 - (tt - period/2)/(period/2));
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(endpt.x * frac, endpt.y * frac, 4, 0, 2*Math.PI);
+    ctx.fill();
+  }
+  pulse(e1, 0, '#a4f0e8');
+  pulse(e2, 0.3, '#f7c08a');
+
+  // v_h arrow (fixed compass direction = axisAzDeg, but draw full 0-360
+  // using the un-mod180 azimuth for clarity of direction)
+  const apex = effectiveApex();
+  const { az } = altAz(apex.raH, apex.decDeg, state.lat, currentLST());
+  const vRad = deg2rad(az);
+  const vLen = 140;
+  const vx = Math.sin(vRad) * vLen, vy = -Math.cos(vRad) * vLen;
+  ctx.strokeStyle = '#e06c75';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(vx, vy); ctx.stroke();
+  // arrowhead
+  const ah = 8;
+  const aAng = Math.atan2(vy, vx);
+  ctx.beginPath();
+  ctx.moveTo(vx, vy);
+  ctx.lineTo(vx - ah*Math.cos(aAng-0.4), vy - ah*Math.sin(aAng-0.4));
+  ctx.lineTo(vx - ah*Math.cos(aAng+0.4), vy - ah*Math.sin(aAng+0.4));
+  ctx.closePath();
+  ctx.fillStyle = '#e06c75';
+  ctx.fill();
+  ctx.fillStyle = '#e06c75'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('v_h', vx + 6, vy);
+
+  ctx.restore();
+
+  ctx.fillStyle = '#8891a7'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('arm 1 (teal)  ·  arm 2 (orange)  ·  contraction exaggeration ×' + state.exag.toLocaleString(), 8, H-10);
+}
+
+function drawTrace(currentAz) {
+  const ctx = cTrace, W = 560, H = 440;
+  clear(ctx, W, H);
+  const padL = 46, padR = 14, padT = 14, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  // estimate amplitude range for y-scale
+  const A = Math.max(1e-9, Math.abs(amplitudeAt(currentVEffCache)) * 1.25);
+
+  // axes
+  ctx.strokeStyle = '#232a3a'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padL, padT); ctx.lineTo(padL, padT+plotH); ctx.lineTo(padL+plotW, padT+plotH);
+  ctx.stroke();
+  ctx.fillStyle = '#8891a7'; ctx.font = '10.5px sans-serif'; ctx.textAlign = 'center';
+  [0,90,180,270,360].forEach(deg => {
+    const x = padL + plotW * (deg/360);
+    ctx.fillText(deg+'°', x, padT+plotH+14);
+    ctx.strokeStyle = '#1a2030';
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT+plotH); ctx.stroke();
+  });
+  ctx.textAlign = 'right';
+  ctx.fillText((+A).toExponential(2), padL-6, padT+10);
+  ctx.fillText('0', padL-6, padT+plotH/2+4);
+  ctx.fillText((-A).toExponential(2), padL-6, padT+plotH-2);
+
+  function yOf(dn) { return padT + plotH/2 - (dn/A) * (plotH/2 - 4); }
+  function xOf(az) { return padL + plotW * (az/360); }
+
+  // zero line
+  ctx.strokeStyle = '#333c50';
+  ctx.beginPath(); ctx.moveTo(padL, yOf(0)); ctx.lineTo(padL+plotW, yOf(0)); ctx.stroke();
+
+  // trace
+  if (traceBuffer.length > 1) {
+    ctx.strokeStyle = '#4fd1c5';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    traceBuffer.forEach((s, i) => {
+      const x = xOf(s.az), y = yOf(s.dn);
+      if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+  }
+
+  // current position marker
+  ctx.fillStyle = '#f2994a';
+  ctx.beginPath(); ctx.arc(xOf(currentAz), yOf(computeDeltaN(currentAz-currentAxisCache, currentVEffCache)), 4, 0, 2*Math.PI); ctx.fill();
+
+  ctx.fillStyle = '#8891a7'; ctx.textAlign = 'left'; ctx.font = '11px sans-serif';
+  ctx.fillText('ΔN (fringes) vs. arm-1 azimuth over one mechanical revolution', padL, 12);
+}
+
+function drawCompass(axisDeg, A, maxAEstimate) {
+  const ctx = cCompass, W = 440, H = 440, cx = W/2, cy = H/2, R = 170;
+  clear(ctx, W, H);
+  ctx.save(); ctx.translate(cx, cy);
+  ctx.strokeStyle = '#232a3a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(0,0,R,0,2*Math.PI); ctx.stroke();
+  for (let d=0; d<360; d+=30) {
+    const rad = deg2rad(d);
+    const x1 = Math.sin(rad)*R, y1 = -Math.cos(rad)*R;
+    const x2 = Math.sin(rad)*(R-8), y2 = -Math.cos(rad)*(R-8);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  }
+  ctx.fillStyle = '#8891a7'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('N', 0, -R-8);
+  ctx.fillText('E', R+12, 4);
+  ctx.fillText('S', 0, R+16);
+  ctx.fillText('W', -R-12, 4);
+
+  const denom = Math.max(1e-12, maxAEstimate);
+  const lenFrac = Math.min(1, Math.abs(A) / denom);
+  const len = 20 + lenFrac * (R-30);
+  const rad = deg2rad(axisDeg);
+  const dx = Math.sin(rad)*len, dy = -Math.cos(rad)*len;
+  ctx.strokeStyle = A >= 0 ? '#4fd1c5' : '#e06c75';
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(-dx,-dy); ctx.lineTo(dx,dy); ctx.stroke();
+  ctx.fillStyle = ctx.strokeStyle;
+  [[dx,dy],[-dx,-dy]].forEach(([x,y]) => { ctx.beginPath(); ctx.arc(x,y,5,0,2*Math.PI); ctx.fill(); });
+
+  ctx.restore();
+  ctx.fillStyle = '#8891a7'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('Signal axis (180°-ambiguous) · amplitude A = ' + A.toExponential(3) + ' fringes', 8, H-10);
+}
+
+function drawDayPlot(currentLSTh, currentSolarH) {
+  const ctx = cDay, W = 560, H = 440;
+  clear(ctx, W, H);
+  const padL = 50, padR = 50, padT = 20, padB = 30;
+  const plotW = W - padL - padR, plotH = (H - padT - padB - 40);
+
+  const N = 145;
+  const samplesSidereal = [];
+  let maxA = 1e-12;
+  for (let i=0;i<N;i++) {
+    const lst = 24 * i/(N-1);
+    const r = solveForLST(lst);
+    samplesSidereal.push({ lst, A: r.A, axis: r.axisDeg });
+    maxA = Math.max(maxA, Math.abs(r.A));
+  }
+  // solar-time version: for a given solar hour, LST = solar*SIDEREAL_RATE (approx, arbitrary zero-alignment)
+  const samplesSolar = [];
+  for (let i=0;i<N;i++) {
+    const solar = 24 * i/(N-1);
+    const lst = wrapHours(solar * SIDEREAL_RATE, 24);
+    const r = solveForLST(lst);
+    samplesSolar.push({ solar, A: r.A });
+    maxA = Math.max(maxA, Math.abs(r.A));
+  }
+
+  // --- amplitude subplot ---
+  const ampH = plotH * 0.55;
+  ctx.strokeStyle = '#232a3a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT+ampH); ctx.lineTo(padL+plotW, padT+ampH); ctx.stroke();
+  ctx.fillStyle = '#8891a7'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText(maxA.toExponential(1), padL-6, padT+10);
+  ctx.fillText('0', padL-6, padT+ampH);
+  ctx.textAlign = 'center'; ctx.font = '10.5px sans-serif';
+  [0,6,12,18,24].forEach(h => {
+    const x = padL + plotW*(h/24);
+    ctx.fillText(h+'h', x, padT+ampH+13);
+    ctx.strokeStyle = '#1a2030'; ctx.beginPath(); ctx.moveTo(x,padT); ctx.lineTo(x,padT+ampH); ctx.stroke();
+  });
+  function xOfH(h) { return padL + plotW*(h/24); }
+  function yOfA(a) { return padT + ampH - (Math.abs(a)/maxA) * (ampH-6); }
+
+  ctx.strokeStyle = '#4fd1c5'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  samplesSidereal.forEach((s,i) => { const x=xOfH(s.lst), y=yOfA(s.A); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+  ctx.stroke();
+
+  ctx.strokeStyle = '#f2994a'; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  samplesSolar.forEach((s,i) => { const x=xOfH(s.solar), y=yOfA(s.A); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // current markers
+  const rNow = solveForLST(currentLSTh);
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(xOfH(currentLSTh), yOfA(rNow.A), 4, 0, 2*Math.PI); ctx.fill();
+
+  ctx.fillStyle = '#8891a7'; ctx.textAlign = 'left'; ctx.font = '11px sans-serif';
+  ctx.fillText('|A| vs time — teal: sidereal time · orange (dashed): solar time', padL, padT-6);
+
+  // --- axis-azimuth subplot ---
+  const axT = padT + ampH + 34;
+  const axH = plotH - ampH - 10;
+  ctx.strokeStyle = '#232a3a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padL, axT); ctx.lineTo(padL, axT+axH); ctx.lineTo(padL+plotW, axT+axH); ctx.stroke();
+  ctx.fillStyle = '#8891a7'; ctx.textAlign = 'right'; ctx.font = '10px sans-serif';
+  ctx.fillText('180°', padL-6, axT+8);
+  ctx.fillText('0°', padL-6, axT+axH);
+  ctx.textAlign = 'center';
+  [0,6,12,18,24].forEach(h => {
+    const x = padL + plotW*(h/24);
+    ctx.fillText(h+'h', x, axT+axH+13);
+  });
+  function yOfAx(ax) { return axT + axH - (ax/180)*(axH-4); }
+  ctx.strokeStyle = '#c792ea'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  let prevX=null, prevY=null;
+  samplesSidereal.forEach((s) => {
+    const x=xOfH(s.lst), y=yOfAx(s.axis);
+    if (prevX!==null && Math.abs(y-prevY) > axH*0.6) { ctx.moveTo(x,y); } else if (prevX===null) { ctx.moveTo(x,y); } else { ctx.lineTo(x,y); }
+    prevX=x; prevY=y;
+  });
+  ctx.stroke();
+  ctx.fillStyle = '#8891a7'; ctx.textAlign = 'left'; ctx.font = '11px sans-serif';
+  ctx.fillText('signal-axis azimuth (mod 180°) vs sidereal time', padL, axT-6);
+}
+
+/* ============================================================
+   Animation loop
+   ============================================================ */
+let lastT = null;
+let currentVEffCache = 0, currentAxisCache = 0;
+
+function currentLST() {
+  return wrapHours(simSolarHours * SIDEREAL_RATE, 24);
+}
+
+function frame(t) {
+  if (lastT === null) lastT = t;
+  const dtReal = Math.min(0.25, (t - lastT) / 1000);
+  lastT = t;
+
+  armAzimuth = wrap360(armAzimuth + state.rotSpeed * dtReal);
+  simSolarHours = wrapHours(simSolarHours + (state.timeSpeed * dtReal) / 3600, 24);
+
+  const lst = currentLST();
+  const r = solveForLST(lst);
+  currentVEffCache = r.vEff;
+  currentAxisCache = r.axisDeg;
+
+  const theta = armAzimuth - r.axisDeg;
+  const dn = computeDeltaN(theta, r.vEff);
+
+  // maintain trace buffer, reset at each wrap of armAzimuth
+  if (traceBuffer.length && armAzimuth < lastArmAzWrapped) {
+    traceBuffer = [];
+  }
+  lastArmAzWrapped = armAzimuth;
+  traceBuffer.push({ az: armAzimuth, dn });
+  if (traceBuffer.length > 2000) traceBuffer.shift();
+
+  drawInterferometer(armAzimuth, r.axisDeg, r.vEff, t);
+  drawTrace(armAzimuth);
+  // estimate a reasonable max amplitude for compass scaling: amplitude at v_h = v (best case)
+  const apex = effectiveApex();
+  const maxAEstimate = Math.max(1e-12, Math.abs(amplitudeAt(apex.vMS)));
+  drawCompass(r.axisDeg, dn, maxAEstimate);
+  drawDayPlot(lst, simSolarHours);
+
+  updateReadout(lst, r, theta, dn);
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============================================================
+   Readout + sanity checks
+   ============================================================ */
+function vInversion(peakA) {
+  const lambdaM = state.lambda * 1e-9;
+  if (peakA <= 0) return { vMM: 0, vQF: null };
+  const vMM = Math.sqrt(peakA * C * C * lambdaM / state.L);
+  const nn = state.n * state.n - 1;
+  const vQF = nn > 1e-12 ? vMM / Math.sqrt(nn) : null;
+  return { vMM, vQF };
+}
+
+function updateReadout(lst, r, theta, dn) {
+  const el = document.getElementById('readout');
+  const inv = vInversion(Math.abs(r.A));
+  const rows = [
+    ['Local sidereal time', fmt(lst,3) + ' h'],
+    ['Local solar time', fmt(simSolarHours,3) + ' h'],
+    ['Apex altitude', fmt(r.alt,2) + '°'],
+    ['Apex azimuth', fmt(r.az,2) + '°'],
+    ['v_h (horizontal)', fmt(r.vh/KM,2) + ' km/s'],
+    ['v_eff (incl. tilt)', fmt(r.vEff/KM,2) + ' km/s'],
+    ['Signal axis (mod 180°)', fmt(r.axisDeg,2) + '°'],
+    ['Arm-1 azimuth (mechanical)', fmt(wrap360(theta+r.axisDeg),1) + '°'],
+    ['θ (arm − axis)', fmt(wrap180signed(theta),2) + '°'],
+    ['ΔN now', dn.toExponential(4) + ' fringes'],
+    ['Peak amplitude A(now)', r.A.toExponential(4) + ' fringes'],
+    ['Peak-to-peak (2A)', (2*Math.abs(r.A)).toExponential(4)],
+    ['Inferred v_MM (naive vacuum)', inv.vMM>0 ? fmt(inv.vMM/KM,2)+' km/s' : '—'],
+    ['Inferred v_QF (÷√(n²−1))', inv.vQF!=null ? fmt(inv.vQF/KM,1)+' km/s' : 'n/a (n=1)'],
+  ];
+  el.innerHTML = rows.map(([k,v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join('');
+}
+
+function runSanityChecks() {
+  const results = [];
+  function check(name, actual, expected, tolFrac) {
+    const ok = Math.abs(actual-expected) <= Math.abs(expected)*tolFrac + 1e-9;
+    results.push({ name, actual, expected, ok });
+  }
+
+  // snapshot state, run isolated computations, restore
+  const snap = JSON.stringify(state);
+
+  // 1. Miller + air + CMB(370): peak-to-peak ~0.1
+  Object.assign(state, { L:32, lambda:570, n:GAS_PRESETS.air, contraction:true, standardPhysics:false, exactFormula:true });
+  let A = amplitudeAt(370*KM);
+  check('Miller+air+CMB(370km/s) peak-to-peak ≈ 0.1 fringe', 2*Math.abs(A), 0.1, 0.05);
+
+  // 2. Classical ether, 30km/s, Miller L, vacuum, no contraction: ~1.1 fringe p2p
+  Object.assign(state, { L:32, lambda:570, n:1.0, contraction:false, standardPhysics:false, exactFormula:true });
+  A = amplitudeAt(30*KM);
+  check('Classical ether 30km/s, Miller L, no contraction ≈ 1.1 fringe p2p', 2*Math.abs(A), 1.1, 0.05);
+
+  // 3. Vacuum, contracted, any v -> ~0
+  Object.assign(state, { L:32, lambda:570, n:1.0, contraction:true, standardPhysics:false, exactFormula:true });
+  A = amplitudeAt(370*KM);
+  check('Vacuum (contracted, exact) ≈ 0', A, 0, 0);
+
+  // 4. Helium amplitude ratio vs air
+  Object.assign(state, { L:32, lambda:570, contraction:true, standardPhysics:false, exactFormula:false });
+  state.n = GAS_PRESETS.air;
+  const Aair = amplitudeAt(370*KM);
+  state.n = GAS_PRESETS.helium;
+  const Ahe = amplitudeAt(370*KM);
+  const expectedRatio = 0.000072/0.00058;
+  check('Helium/air amplitude ratio ≈ 0.000072/0.00058', Ahe/Aair, expectedRatio, 0.02);
+
+  // 5. Standard-physics toggle forces null
+  Object.assign(state, { standardPhysics:true });
+  A = amplitudeAt(370*KM);
+  check('Standard-physics toggle forces null', A, 0, 0);
+
+  Object.assign(state, JSON.parse(snap));
+
+  const html = results.map(r => {
+    const cls = r.ok ? 'pass' : 'fail';
+    return `<span class="${cls}">[${r.ok?'PASS':'FAIL'}]</span> ${r.name}\n   actual=${(typeof r.actual==='number'?r.actual.toExponential(4):r.actual)}  expected≈${r.expected}`;
+  }).join('\n');
+  document.getElementById('sanity').innerHTML = html;
+}
+runSanityChecks();
+
+</script>
+</body>
+</html>
