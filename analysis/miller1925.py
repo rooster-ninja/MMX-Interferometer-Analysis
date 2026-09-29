@@ -37,7 +37,11 @@ def load_sheet(path):
         if flag.strip():
             continue
         turns.append([int(v) for v in vals])
+    ch, cm = head[2].split(":")
+    line4 = lines[3].split(";")
     return {"name": path.stem, "date": head[1], "lst": lst,
+            "civil": int(ch) + int(cm) / 60,                      # local clock time
+            "desk_sw": len(line4) > 2 and "s" in line4[2],         # recorder in SW corner
             "turns": np.array(turns, dtype=float) / 10.0}   # -> fringes
 
 
@@ -46,9 +50,19 @@ def detrend(y):
 
 
 def harmonics(y):
+    """Amplitudes for k=1..7, and the k=2 axis: the arm-1 azimuth (deg, mod 180)
+    where the k=2 term peaks. Mark 16 = arm 1 north, turning clockwise."""
     z = detrend(y)[:16]
     F = np.fft.rfft(z - z.mean())
-    return 2 * np.abs(F[1:8]) / 16, np.angle(F[2])
+    return 2 * np.abs(F[1:8]) / 16, (-np.degrees(np.angle(F[2])) / 2) % 180
+
+
+def cmb_axis(lst_h):
+    """Azimuth (deg, mod 180) of the CMB wind's horizontal component."""
+    H = np.radians((lst_h - CMB["ra"]) * 15)
+    d, la = np.radians(CMB["dec"]), np.radians(LAT)
+    A = np.arctan2(np.sin(H), np.cos(H) * np.sin(la) - np.tan(d) * np.cos(la))
+    return (np.degrees(A) + 180) % 180
 
 
 def cmb_amplitude(lst_h):
