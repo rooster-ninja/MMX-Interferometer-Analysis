@@ -62,72 +62,98 @@ def needle(ax, az, length, color, lw, alpha=1.0):
 
 
 SCALE = 0.12  # fringes at the rim
-fig = plt.figure(figsize=(13.5, 14), dpi=200)
-fig.patch.set_facecolor(SURFACE)
-gs = fig.add_gridspec(3, 4, height_ratios=[1, 1, 1.15], hspace=0.5, wspace=0.5)
 
-for col, (name, prefixes, _) in enumerate(EPOCHS):
-    group = [s for s in sheets if s["date"][:7] in prefixes]
-    obs_ax = fig.add_subplot(gs[0, col], projection="polar")
-    pred_ax = fig.add_subplot(gs[1, col], projection="polar")
-    dial(obs_ax, f"{name} · observed")
-    dial(pred_ax, f"{name} · CMB prediction")
-    for s in group:
-        needle(obs_ax, s["axis"], min(s["amp"] / SCALE, 1), DESK_SW if s["desk_sw"] else DESK_NW, 1.1, 0.55)
-        needle(pred_ax, s["pred_axis"], min(s["pred_amp"] / SCALE, 1), PRED, 1.1, 0.55)
-    m, R = mean_axis([s["axis"] for s in group])
-    pm, pR = mean_axis([s["pred_axis"] for s in group])
-    needle(obs_ax, m, 0.95, TEXT_PRI, 2.6)
-    needle(pred_ax, pm, 0.95, TEXT_PRI, 2.6)
-    obs_ax.text(0.5, -0.14, f"{len(group)} sheets\nmean axis {m:.0f}°, R = {R:.2f}",
-                transform=obs_ax.transAxes, va="top", ha="center", color=TEXT_SEC, fontsize=8.5)
-    pred_ax.text(0.5, -0.14, f"mean axis {pm:.0f}°, R = {pR:.2f}",
-                 transform=pred_ax.transAxes, va="top", ha="center", color=TEXT_SEC, fontsize=8.5)
 
-# --- axis vs sidereal time, 2-hour vector means ---
-ax = fig.add_subplot(gs[2, :])
-ax.set_facecolor(SURFACE)
-for sp in ["top", "right"]:
-    ax.spines[sp].set_visible(False)
-for sp in ["left", "bottom"]:
-    ax.spines[sp].set_color(GRID)
-ax.tick_params(length=0, colors=TEXT_SEC, labelsize=9.5)
-ax.grid(axis="y", color=GRID, linewidth=0.8)
+def circ_corr(a, b):
+    """Fisher-Lee circular correlation of two sets of axes (deg, mod 180)."""
+    a, b = 2 * np.radians(a), 2 * np.radians(b)
+    sa, sb = np.sin(a[:, None] - a[None, :]), np.sin(b[:, None] - b[None, :])
+    return np.sum(sa * sb) / np.sqrt(np.sum(sa**2) * np.sum(sb**2))
 
-t = np.linspace(0, 24, 600)
-pa = cmb_axis(t)
-pa_plot = pa.copy()
-pa_plot[np.r_[False, np.abs(np.diff(pa)) > 90]] = np.nan
-ax.plot(t, pa_plot, color=TEXT_PRI, linewidth=2, linestyle=(0, (6, 3)), label="CMB-dipole prediction", zorder=2)
-for name, prefixes, colr in EPOCHS:
-    group = [s for s in sheets if s["date"][:7] in prefixes]
-    xs, ys = [], []
-    for b in range(12):
-        in_bin = [s for s in group if 2 * b <= s["lst"] < 2 * b + 2]
-        if len(in_bin) >= 2:
-            xs.append(2 * b + 1)
-            ys.append(mean_axis([s["axis"] for s in in_bin])[0])
-    ax.plot(xs, ys, color=colr, marker="o", markersize=8, markeredgecolor=SURFACE,
-            linewidth=0, label=f"{name} observed", zorder=3)
-ax.set_xlim(0, 24)
-ax.set_ylim(0, 180)
-ax.set_xticks(range(0, 25, 3))
-ax.set_yticks([0, 45, 90, 135, 180])
-ax.set_yticklabels(["0° N", "45° NE", "90° E", "135° SE", "180° S"])
-ax.set_xlabel("Sidereal time (h)", color=TEXT_SEC, fontsize=10)
-ax.set_ylabel("Signal axis azimuth (mod 180°)", color=TEXT_SEC, fontsize=10)
-ax.set_title("Signal axis vs sidereal time (2-hour means, bins with ≥2 sheets)",
-             color=TEXT_PRI, fontsize=11.5, fontweight="bold", loc="left", pad=10)
-ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=5, frameon=False,
-          fontsize=9.5, labelcolor=TEXT_SEC)
 
-fig.suptitle("Miller 1925–26: which way does the two-per-turn signal point?",
-             x=0.06, ha="left", color=TEXT_PRI, fontsize=15, fontweight="bold", y=0.975)
-fig.text(0.06, 0.953,
-         "Each thin needle is one data sheet (~17 turns averaged); length = k=2 amplitude (rim = 0.12 fringe); "
-         "bold needle = mean direction.\nObserved needles: blue = recording desk in NW corner, orange = desk in SW corner. "
-         "Axis is 180°-ambiguous. R = 1 means every sheet points the same way.",
-         color=TEXT_SEC, fontsize=8.8, style="italic", va="top")
-out = Path(__file__).parent / "miller1925_phase.png"
-plt.savefig(out, facecolor=SURFACE, bbox_inches="tight")
-print(out)
+def make_figure(subset, title, needle_color, out_name):
+    fig = plt.figure(figsize=(13.5, 14), dpi=200)
+    fig.patch.set_facecolor(SURFACE)
+    gs = fig.add_gridspec(3, 4, height_ratios=[1, 1, 1.15], hspace=0.5, wspace=0.5)
+
+    for col, (name, prefixes, _) in enumerate(EPOCHS):
+        group = [s for s in subset if s["date"][:7] in prefixes]
+        obs_ax = fig.add_subplot(gs[0, col], projection="polar")
+        pred_ax = fig.add_subplot(gs[1, col], projection="polar")
+        dial(obs_ax, f"{name} · observed")
+        dial(pred_ax, f"{name} · CMB prediction")
+        if not group:
+            for a in (obs_ax, pred_ax):
+                a.text(0.5, -0.14, "no sheets", transform=a.transAxes, va="top",
+                       ha="center", color=TEXT_SEC, fontsize=8.5)
+            continue
+        for s in group:
+            c = needle_color or (DESK_SW if s["desk_sw"] else DESK_NW)
+            needle(obs_ax, s["axis"], min(s["amp"] / SCALE, 1), c, 1.1, 0.55)
+            needle(pred_ax, s["pred_axis"], min(s["pred_amp"] / SCALE, 1), PRED, 1.1, 0.55)
+        m, R = mean_axis([s["axis"] for s in group])
+        pm, pR = mean_axis([s["pred_axis"] for s in group])
+        needle(obs_ax, m, 0.95, TEXT_PRI, 2.6)
+        needle(pred_ax, pm, 0.95, TEXT_PRI, 2.6)
+        obs_ax.text(0.5, -0.14, f"{len(group)} sheets\nmean axis {m:.0f}°, R = {R:.2f}",
+                    transform=obs_ax.transAxes, va="top", ha="center", color=TEXT_SEC, fontsize=8.5)
+        pred_ax.text(0.5, -0.14, f"mean axis {pm:.0f}°, R = {pR:.2f}",
+                     transform=pred_ax.transAxes, va="top", ha="center", color=TEXT_SEC, fontsize=8.5)
+
+    ax = fig.add_subplot(gs[2, :])
+    ax.set_facecolor(SURFACE)
+    for sp in ["top", "right"]:
+        ax.spines[sp].set_visible(False)
+    for sp in ["left", "bottom"]:
+        ax.spines[sp].set_color(GRID)
+    ax.tick_params(length=0, colors=TEXT_SEC, labelsize=9.5)
+    ax.grid(axis="y", color=GRID, linewidth=0.8)
+    t = np.linspace(0, 24, 600)
+    pa = cmb_axis(t)
+    pa[np.r_[False, np.abs(np.diff(pa)) > 90]] = np.nan
+    ax.plot(t, pa, color=TEXT_PRI, linewidth=2, linestyle=(0, (6, 3)), label="CMB-dipole prediction", zorder=2)
+    for name, prefixes, colr in EPOCHS:
+        group = [s for s in subset if s["date"][:7] in prefixes]
+        xs, ys, ns = [], [], []
+        for b in range(12):
+            in_bin = [s for s in group if 2 * b <= s["lst"] < 2 * b + 2]
+            if in_bin:
+                xs.append(2 * b + 1)
+                ys.append(mean_axis([s["axis"] for s in in_bin])[0])
+                ns.append(len(in_bin))
+        if xs:
+            ax.scatter(xs, ys, s=[25 + 18 * n for n in ns], color=colr, edgecolor=SURFACE,
+                       linewidth=1, label=f"{name} observed", zorder=3)
+    ax.set_xlim(0, 24)
+    ax.set_ylim(0, 180)
+    ax.set_xticks(range(0, 25, 3))
+    ax.set_yticks([0, 45, 90, 135, 180])
+    ax.set_yticklabels(["0° N", "45° NE", "90° E", "135° SE", "180° S"])
+    ax.set_xlabel("Sidereal time (h)", color=TEXT_SEC, fontsize=10)
+    ax.set_ylabel("Signal axis azimuth (mod 180°)", color=TEXT_SEC, fontsize=10)
+    ax.set_title("Signal axis vs sidereal time (2-hour means; dot size = number of sheets)",
+                 color=TEXT_PRI, fontsize=11.5, fontweight="bold", loc="left", pad=10)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=5, frameon=False,
+              fontsize=9.5, labelcolor=TEXT_SEC)
+
+    axes = np.array([s["axis"] for s in subset])
+    m, R = mean_axis(axes)
+    r = circ_corr(axes, np.array([s["pred_axis"] for s in subset]))
+    fig.suptitle(title, x=0.06, ha="left", color=TEXT_PRI, fontsize=15, fontweight="bold", y=0.975)
+    fig.text(0.06, 0.953,
+             f"{len(subset)} sheets: mean axis {m:.0f}°, R = {R:.2f}; correlation of observed axis with CMB-predicted "
+             f"axis over time = {r:+.2f}.\nThin needle = one data sheet (~17 turns averaged); length = k=2 amplitude "
+             "(rim = 0.12 fringe); bold = mean direction. Axis is 180°-ambiguous; R = 1 means every sheet points the same way.",
+             color=TEXT_SEC, fontsize=8.8, style="italic", va="top")
+    out = Path(__file__).parent / out_name
+    plt.savefig(out, facecolor=SURFACE, bbox_inches="tight")
+    plt.close(fig)
+    print(f"{out.name}: n={len(subset)} mean={m:.0f} R={R:.2f} corr={r:+.2f}")
+
+
+make_figure(sheets, "Miller 1925–26: which way does the two-per-turn signal point?",
+            None, "miller1925_phase.png")
+make_figure([s for s in sheets if not s["desk_sw"]],
+            "Miller 1925–26, recording desk in NW corner", DESK_NW, "miller1925_phase_desk_nw.png")
+make_figure([s for s in sheets if s["desk_sw"]],
+            "Miller 1925–26, recording desk in SW corner", DESK_SW, "miller1925_phase_desk_sw.png")
